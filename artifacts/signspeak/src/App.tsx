@@ -26,6 +26,7 @@ import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
   classifyLandmarks,
   createHandLandmarker,
+  getRecognitionErrorMessage,
   SUPPORTED_GESTURES,
   type HandLandmarkerInstance,
   type SupportedGesture,
@@ -157,20 +158,36 @@ function GestureGuide({
   );
 }
 
-function ErrorCard({ kind, onRetry }: { kind: CameraError; onRetry: () => void }) {
+function ErrorCard({
+  kind,
+  technicalError,
+  onRetry,
+}: {
+  kind: CameraError;
+  technicalError: string | null;
+  onRetry: () => void;
+}) {
   const copy: Record<CameraError, { title: string; body: string }> = {
     permission: { title: 'Camera permission is needed', body: 'Allow camera access in your browser settings, then try again. SignSpeak never starts the camera without your tap.' },
     unavailable: { title: 'Camera unavailable here', body: 'This browser or device did not provide a camera. You can still explore the supported gesture guide.' },
     insecure: { title: 'A secure connection is needed', body: 'Camera access requires HTTPS or localhost. Open SignSpeak from a secure connection and try again.' },
-    model: { title: 'Hand recognition could not be loaded', body: 'Hand recognition could not be loaded. Please refresh and try again. Your camera was not kept running while the model was unavailable.' },
+    model: { title: 'Hand recognition could not be loaded', body: 'The hand model did not finish initializing, so recognition did not start. Your camera was not kept running while the model was unavailable.' },
   };
   return (
     <div className="flex min-h-[340px] flex-col items-center justify-center px-7 text-center" data-testid={`error-${kind}`}>
       <div className="mb-4 rounded-2xl bg-[#fff0ed] p-3 text-[#bd5d55]"><CircleAlert size={24} aria-hidden="true" /></div>
       <h2 className="font-display text-xl font-extrabold tracking-[-.03em] text-[#452c5e]">{copy[kind].title}</h2>
       <p className="mt-2 max-w-sm text-sm leading-6 text-[#846f8e]">{copy[kind].body}</p>
+      {kind === 'model' && technicalError && (
+        <details className="mt-4 w-full max-w-sm rounded-2xl border border-[#eedfe1] bg-[#fff9f8] text-left">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-[#9b5752]">Technical error</summary>
+          <code className="block max-h-32 overflow-auto border-t border-[#eedfe1] px-3 py-2 text-[11px] leading-5 text-[#874b49]">
+            {technicalError}
+          </code>
+        </details>
+      )}
       <button type="button" onClick={onRetry} className="mt-6 flex min-h-12 items-center gap-2 rounded-2xl bg-[#633b91] px-5 text-sm font-bold text-white transition-transform hover:-translate-y-0.5" data-testid="button-retry-camera">
-        <RotateCcw size={16} aria-hidden="true" /> Try again
+        <RotateCcw size={16} aria-hidden="true" /> Try Again
       </button>
     </div>
   );
@@ -183,6 +200,7 @@ function CameraStage({
   translation,
   speechStatus,
   autoSpeak,
+  technicalError,
   onStart,
   onStop,
   onSpeak,
@@ -196,6 +214,7 @@ function CameraStage({
   translation: SupportedGesture | null;
   speechStatus: SpeechStatus;
   autoSpeak: boolean;
+  technicalError: string | null;
   onStart: () => void;
   onStop: () => void;
   onSpeak: () => void;
@@ -232,7 +251,7 @@ function CameraStage({
             </div>
           </>
         ) : error ? (
-          <ErrorCard kind={error} onRetry={onStart} />
+          <ErrorCard kind={error} technicalError={technicalError} onRetry={onStart} />
         ) : (
           <div className="relative flex min-h-[330px] flex-col items-center justify-center overflow-hidden px-7 text-center">
             <div className="absolute left-[-20%] top-[-35%] h-60 w-60 rounded-full bg-[#7652a2]/25 blur-2xl" />
@@ -240,10 +259,10 @@ function CameraStage({
               {phase === 'loading-model' || phase === 'requesting' ? <Waves size={38} className="animate-breathe" aria-hidden="true" /> : <Hand size={38} aria-hidden="true" />}
             </div>
             <p className="relative font-display text-xl font-extrabold tracking-[-.04em] text-white">
-              {phase === 'loading-model' ? 'Preparing your practice space' : phase === 'requesting' ? 'Asking for camera access' : 'Your camera stays off until you start'}
+              {phase === 'loading-model' ? 'Loading hand recognition...' : phase === 'requesting' ? 'Asking for camera access' : 'Your camera stays off until you start'}
             </p>
             <p className="relative mt-2 max-w-xs text-sm leading-5 text-[#c6b7d6]">
-              {phase === 'loading-model' || phase === 'requesting' ? 'Just a moment. Nothing is recorded.' : 'When you are ready, we will look for one hand and nothing else.'}
+              {phase === 'loading-model' ? 'Downloading the hand model and preparing on-device recognition. Nothing is recorded.' : phase === 'requesting' ? 'Just a moment. Nothing is recorded.' : 'When you are ready, we will look for one hand and nothing else.'}
             </p>
             {phase === 'welcome' && (
               <button type="button" onClick={onStart} className="relative mt-7 flex min-h-12 items-center gap-2 rounded-2xl bg-[#f4c77e] px-5 text-sm font-extrabold text-[#3e2852] shadow-lg shadow-[#120b1f]/20 transition-transform hover:-translate-y-0.5" data-testid="button-start-camera">
@@ -306,6 +325,7 @@ function Home() {
   const frameStateRef = useRef({ candidate: null as SupportedGesture | null, count: 0, lastAccepted: null as SupportedGesture | null, lastAcceptedAt: 0 });
   const [phase, setPhase] = useState<CameraPhase>('welcome');
   const [error, setError] = useState<CameraError | null>(null);
+  const [technicalError, setTechnicalError] = useState<string | null>(null);
   const [detectionStatus, setDetectionStatus] = useState('No supported sign detected');
   const [translation, setTranslation] = useState<SupportedGesture | null>(null);
   const [speechStatus, setSpeechStatus] = useState<SpeechStatus>('idle');
@@ -359,7 +379,7 @@ function Home() {
       if (!candidate) {
         state.candidate = null;
         state.count = 0;
-        setDetectionStatus(landmarks ? 'Recognizing…' : 'No supported sign detected');
+          setDetectionStatus(landmarks ? 'Hand detected · Recognizing…' : 'Show your hand in front of the camera');
       } else if (state.candidate === candidate) {
         state.count += 1;
         setDetectionStatus(state.count >= 8 ? 'Sign accepted' : 'Recognizing…');
@@ -384,6 +404,7 @@ function Home() {
 
   const startCamera = useCallback(async () => {
     setError(null);
+    setTechnicalError(null);
     if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       console.error('[SignSpeak] Camera blocked: insecure context');
       setError('insecure');
@@ -397,9 +418,24 @@ function Home() {
       return;
     }
     setPhase('loading-model');
+    if (landmarkerRef.current) {
+      landmarkerRef.current.close();
+      landmarkerRef.current = null;
+    }
     try {
-      if (!landmarkerRef.current) landmarkerRef.current = await createHandLandmarker();
-      setPhase('requesting');
+      landmarkerRef.current = await createHandLandmarker();
+    } catch (modelError) {
+      console.error('[SignSpeak] Hand recognition model initialization failed', modelError);
+      landmarkerRef.current?.close();
+      landmarkerRef.current = null;
+      setTechnicalError(getRecognitionErrorMessage(modelError));
+      setError('model');
+      setPhase('error');
+      return;
+    }
+
+    setPhase('requesting');
+    try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { facingMode: { ideal: 'user' }, width: { ideal: 720 }, height: { ideal: 960 } },
@@ -417,7 +453,7 @@ function Home() {
       const name = cameraError instanceof DOMException ? cameraError.name : '';
       if (name === 'NotAllowedError' || name === 'SecurityError') setError('permission');
       else if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') setError('unavailable');
-      else setError(streamRef.current ? 'unavailable' : 'model');
+      else setError('unavailable');
       setPhase('error');
     }
   }, [processFrame]);
@@ -455,6 +491,7 @@ function Home() {
               translation={translation}
               speechStatus={speechStatus}
               autoSpeak={autoSpeak}
+              technicalError={technicalError}
               onStart={startCamera}
               onStop={stopCamera}
               onSpeak={() => translation && speak(translation)}
