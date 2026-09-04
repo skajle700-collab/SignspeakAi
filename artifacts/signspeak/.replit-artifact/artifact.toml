@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SignSpeak Translator"
+description = "A mobile-first sign language translation prototype that uses the phone camera, real hand landmarks, conservative gesture recognition, and browser speech output for five supported demo gestures."
+version = "1.0.0"
+id = "artifacts/signspeak"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22007
+
+[services.development]
+run = "pnpm --filter @workspace/signspeak run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/signspeak", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/signspeak/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22007"
+BASE_PATH = "/"

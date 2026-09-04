@@ -1,0 +1,310 @@
+Create a complete working mobile-first web app called "SignSpeak – Sign Language Translator".
+
+IMPORTANT:
+Build the entire application yourself. Do not ask me to manually create files or paste separate code unless absolutely necessary. Create all required files, install/configure dependencies, and fix all errors automatically.
+
+APP PURPOSE:
+A person stands in front of the phone camera and communicates using supported sign-language gestures. The camera detects the person's hand, recognizes supported gestures, converts them into English text, and can speak the translated text aloud.
+
+IMPORTANT LIMITATION:
+This is a prototype, not a complete universal sign-language translator. Start with a small, clearly defined set of supported gestures. Never show a random word or pretend a gesture was recognized when it was not.
+
+CORE FLOW:
+
+Camera
+   ↓
+Hand Detection
+   ↓
+Hand Landmarks
+   ↓
+Gesture Recognition
+   ↓
+English Translation
+   ↓
+Text on Screen
+   ↓
+Speech
+
+FEATURES:
+
+1. HOME SCREEN
+Create a clean welcome screen containing:
+
+- App name: "🤟 SignSpeak"
+- Subtitle: "Sign Language Translator"
+- Short description:
+  "Use your camera to recognize supported sign-language gestures."
+- Large button:
+  "📷 Start Translating"
+
+2. CAMERA
+
+When the user taps "Start Translating":
+
+- Request camera permission only after the button is pressed.
+- Open the phone's front-facing camera.
+- Use:
+  navigator.mediaDevices.getUserMedia()
+- Prefer:
+  facingMode: "user"
+- Use video constraints suitable for mobile devices.
+- The video element must use:
+  autoplay
+  playsinline
+  muted
+
+Do NOT automatically request camera permission when the page first loads.
+
+Display a clear camera preview.
+
+Add:
+- "⏹ Stop Camera" button
+- Camera status message
+
+Handle these errors clearly:
+- Permission denied
+- Camera unavailable
+- Browser does not support camera
+- Insecure/non-HTTPS context
+
+If camera permission is denied, show instructions explaining how to allow camera permission.
+
+3. HAND DETECTION
+
+Use a real browser-compatible hand tracking/computer vision solution.
+
+Prefer a current, supported MediaPipe hand-landmark solution such as MediaPipe Tasks Vision.
+
+Do NOT use fake hand detection.
+
+Continuously process frames from the live camera.
+
+Detect:
+- One hand
+- Hand landmarks
+- Finger positions
+- Palm/hand orientation where useful
+
+Show a small status indicator:
+
+"Hand detected ✓"
+
+or
+
+"Show your hand in front of the camera"
+
+4. SIGN/GESTURE RECOGNITION
+
+Create a separate, well-organized gesture recognition module.
+
+For the first prototype, support these five clearly defined demo gestures:
+
+- HELLO
+- YES
+- NO
+- THANK YOU
+- HELP
+
+The recognition must be based on actual detected hand landmarks and gesture rules/model logic.
+
+Do NOT:
+- choose words randomly
+- change the word every few seconds
+- pretend that any hand movement is a correct translation
+- use fake camera data
+
+If reliable recognition for one of these gestures cannot be achieved using simple landmark rules, display "Recognizing..." rather than giving a false translation.
+
+Make the recognition system modular so a trained sign-language ML model can replace/upgrade the rules later.
+
+5. STABILITY / CONFIDENCE
+
+Do not translate a gesture from one accidental frame.
+
+Require the same gesture to be detected consistently across multiple frames before accepting it.
+
+Add a confidence/stability mechanism.
+
+Display:
+
+"Recognizing..."
+
+then, when stable:
+
+"Translation: HELLO"
+
+Prevent the same gesture from being spoken repeatedly every frame.
+
+Add a cooldown/debounce period.
+
+6. TRANSLATION DISPLAY
+
+Create a large translation card.
+
+Example:
+
+Translation
+HELLO
+
+Also show a smaller status:
+
+"Confidence: High"
+
+or an appropriate recognition status.
+
+If no supported gesture is detected:
+
+"No supported sign detected"
+
+Do not invent a translation.
+
+7. TEXT TO SPEECH
+
+Add:
+
+"🔊 Speak Again"
+
+When pressed, use the browser's built-in SpeechSynthesis API.
+
+The latest recognized English translation should be spoken aloud.
+
+When a NEW gesture is successfully recognized, the app may automatically speak it once, but implement a cooldown so it does not continuously repeat.
+
+Handle browsers that restrict automatic speech.
+
+If automatic speech is blocked, show:
+
+"Tap Speak Again to hear the translation."
+
+Do NOT require a separate paid text-to-speech API.
+
+8. CONTROLS
+
+Include:
+
+- 📷 Start Translating
+- ⏹ Stop Camera
+- 🔊 Speak Again
+- Clear Translation
+
+The Clear button should reset the current translation.
+
+9. USER INTERFACE
+
+Make the application modern, simple and attractive.
+
+Use:
+- Purple and white theme
+- Rounded cards
+- Large touch-friendly buttons
+- Clear typography
+- Mobile-first responsive design
+- Good spacing
+- Accessible contrast
+- Simple icons/emojis where appropriate
+
+The camera preview should have rounded corners.
+
+Make sure the UI works properly on Android phone screens.
+
+10. ABOUT / LIMITATIONS SECTION
+
+Add a small section:
+
+"About this prototype"
+
+Explain:
+
+"SignSpeak is a prototype that recognizes a limited number of supported gestures. Sign languages contain many signs, facial expressions, movements and regional variations. A complete sign-language translation system requires a properly trained machine-learning model and a large, representative dataset."
+
+11. TECHNICAL REQUIREMENTS
+
+Use a technology stack that works reliably in Replit.
+
+HTML/CSS/JavaScript is acceptable, or use a suitable frontend framework if it makes the implementation more reliable.
+
+Important:
+
+- Do NOT put JavaScript code inside package.json.
+- package.json must contain only valid package configuration.
+- Install all required dependencies correctly.
+- Use correct current versions/APIs.
+- Keep code modular and readable.
+- Add useful comments.
+- Do not leave placeholder imports that cause errors.
+- Do not leave broken buttons.
+- Do not use fake/random translations.
+- Do not expose API keys in frontend code.
+- Do not require a backend unless it is actually necessary.
+
+12. SECURITY / CAMERA
+
+Camera access must work from a secure HTTPS Replit deployment.
+
+The app must not request camera access before the user presses Start Translating.
+
+Stop and release the camera stream when the user presses Stop Camera.
+
+13. ERROR HANDLING
+
+The application must never show a blank screen because of an error.
+
+If the hand-tracking model fails to load, show:
+
+"Hand recognition could not be loaded. Please refresh and try again."
+
+Log technical errors to the browser console for debugging.
+
+14. REPLIT REQUIREMENTS
+
+This project must be runnable directly in Replit.
+
+After creating the app:
+
+- Install dependencies.
+- Configure the project correctly.
+- Make sure the Run button works.
+- Start the development server correctly.
+- Fix build errors.
+- Fix runtime errors.
+- Fix missing dependencies.
+- Fix incorrect MediaPipe imports/APIs.
+- Check that the camera flow works.
+- Check that hand detection works.
+- Check that translation display works.
+- Check that SpeechSynthesis works.
+
+Do not tell me to manually fix errors that you can fix yourself.
+
+15. README
+
+Create a README.md containing:
+
+- What SignSpeak does
+- How to run it in Replit
+- How camera permissions work
+- Supported prototype gestures
+- Current limitations
+- How to connect a trained sign-language model in the future
+
+16. FINAL CHECK
+
+Before finishing, verify the complete intended flow:
+
+START APP
+→ Start Translating
+→ Camera permission
+→ Camera opens
+→ Hand detected
+→ Hand landmarks processed
+→ Supported gesture recognized
+→ Stable recognition confirmed
+→ English translation displayed
+→ Speak Again works
+→ Stop Camera works
+→ Clear Translation works
+
+If any part does not work, fix it before considering the project complete.
+
+IMPORTANT FINAL RULE:
+Never claim that the app can translate all sign language. Clearly present it as a limited prototype until a proper trained sign-language recognition model is integrated.
