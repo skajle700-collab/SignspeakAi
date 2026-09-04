@@ -1,6 +1,6 @@
 # SignSpeak
 
-SignSpeak is a mobile-first browser prototype for practicing a small set of sign-language demo gestures. It uses the phone's front camera, a MediaPipe Tasks Vision hand-landmark detector, conservative landmark rules, and the browser's built-in SpeechSynthesis API to turn a stable accepted gesture into English text and optional speech.
+SignSpeak is a mobile-first browser prototype for practicing a small set of sign-language demo gestures. It uses the phone's front camera, the `@mediapipe/tasks-vision` 1.0.1 package with MediaPipe `HandLandmarker` and `FilesetResolver`, conservative landmark rules, and the browser's built-in SpeechSynthesis API to turn a stable accepted gesture into English text and optional speech.
 
 ## Run in Replit
 
@@ -26,6 +26,12 @@ SignSpeak does not request camera access on page load. Permission is requested o
 - HELP
 
 The rules are intentionally conservative. A hand landmark candidate must remain the same across multiple frames before it becomes a translation, and a cooldown prevents repeated speech for a held gesture.
+
+## Hand-recognition technology
+
+When **Start Translating** is pressed, SignSpeak loads the MediaPipe Tasks Vision WebAssembly runtime from the pinned `@mediapipe/tasks-vision@1.0.1` distribution, downloads the official MediaPipe Hand Landmarker `.task` model into memory, verifies that the download is non-empty, and initializes the `HandLandmarker` before requesting the camera. The live loop then calls `detectForVideo` on the camera element for each animation frame. The model runs on-device; no camera frames are uploaded by this prototype. If GPU initialization is unavailable, the same downloaded model is retried with the CPU delegate.
+
+If initialization fails, the app stops before recognition begins, shows the underlying technical error, and **Try again** creates a fresh landmarker initialization rather than starting a loop with a missing model.
 
 ## Current limitations
 

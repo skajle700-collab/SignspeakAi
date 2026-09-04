@@ -1,94 +1,122 @@
+import {
+  FilesetResolver,
+  HandLandmarker,
+} from '@mediapipe/tasks-vision';
+
 export const SUPPORTED_GESTURES = ['HELLO', 'YES', 'NO', 'THANK YOU', 'HELP'] as const;
 export type SupportedGesture = (typeof SUPPORTED_GESTURES)[number];
 
 export type Landmark = { x: number; y: number; z?: number };
 
-type VisionModule = {
-  FilesetResolver: {
-    forVisionTasks: (wasmPath: string) => Promise<unknown>;
-  };
-  HandLandmarker: {
-    createFromOptions: (fileset: unknown, options: Record<string, unknown>) => Promise<HandLandmarkerInstance>;
-  };
-};
+export type HandLandmarkerInstance = Pick<
+  HandLandmarker,
+  'detectForVideo' | 'close'
+>;
 
-export type HandLandmarkerInstance = {
-  detectForVideo: (video: HTMLVideoElement, timestamp: number) => { landmarks?: Landmark[][] };
-  close?: () => void;
-};
-
-declare global {
-  interface Window {
-    __signSpeakVision?: VisionModule;
-  }
-}
-
-const VISION_URL =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs';
-const WASM_URL =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm';
-const MODEL_URL =
+export const HAND_LANDMARKER_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
-let visionPromise: Promise<VisionModule> | null = null;
+const WASM_URL =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
 
-/**
- * Loads the browser ESM build rather than shipping a large WASM bundle in the
- * prototype. Keeping this boundary small means a trained classifier can be
- * swapped in later without changing the camera or UI layer.
- */
-export function loadVisionModule(): Promise<VisionModule> {
-  if (window.__signSpeakVision) return Promise.resolve(window.__signSpeakVision);
-  if (visionPromise) return visionPromise;
+let filesetPromise: ReturnType<typeof FilesetResolver.forVisionTasks> | null =
+  null;
 
-  visionPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.textContent = `
-      import { FilesetResolver, HandLandmarker } from "${VISION_URL}";
-      window.__signSpeakVision = { FilesetResolver, HandLandmarker };
-      window.dispatchEvent(new Event('signspeak-vision-ready'));
-    `;
-    const timeout = window.setTimeout(() => {
-      reject(new Error('The hand landmark model loader timed out.'));
-    }, 18000);
-    const complete = () => {
-      window.clearTimeout(timeout);
-      if (window.__signSpeakVision) resolve(window.__signSpeakVision);
-      else reject(new Error('The hand landmark library did not initialize.'));
-    };
-    window.addEventListener('signspeak-vision-ready', complete, { once: true });
-    script.onerror = () => {
-      window.clearTimeout(timeout);
-      reject(new Error('The hand landmark library could not be downloaded.'));
-    };
-    document.head.appendChild(script);
-  });
+function loadFileset() {
+  if (!filesetPromise) {
+    filesetPromise = FilesetResolver.forVisionTasks(WASM_URL).catch((error) => {
+      filesetPromise = null;
+      throw new Error(
+        `MediaPipe WebAssembly runtime failed to load from ${WASM_URL}. ${formatError(error)}`,
+        { cause: error },
+      );
+    });
+  }
 
-  return visionPromise;
+  return filesetPromise;
+}
+
+async function downloadModel(): Promise<Uint8Array> {
+  let response: Response;
+
+  try {
+    response = await fetch(HAND_LANDMARKER_MODEL_URL, {
+      cache: 'force-cache',
+      mode: 'cors',
+    });
+  } catch (error) {
+    throw new Error(
+      `Hand landmark model download failed from ${HAND_LANDMARKER_MODEL_URL}. ${formatError(error)}`,
+      { cause: error },
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Hand landmark model download returned HTTP ${response.status} ${response.statusText} from ${HAND_LANDMARKER_MODEL_URL}.`,
+    );
+  }
+
+  const model = new Uint8Array(await response.arrayBuffer());
+  if (model.byteLength < 1024) {
+    throw new Error(
+      `Hand landmark model download was incomplete (${model.byteLength} bytes).`,
+    );
+  }
+
+  return model;
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+  return String(error);
+}
+
+export function getRecognitionErrorMessage(error: unknown): string {
+  return formatError(error);
 }
 
 export async function createHandLandmarker(): Promise<HandLandmarkerInstance> {
-  const vision = await loadVisionModule();
-  const fileset = await vision.FilesetResolver.forVisionTasks(WASM_URL);
+  const [fileset, modelAssetBuffer] = await Promise.all([
+    loadFileset(),
+    downloadModel(),
+  ]);
+
   const options = {
-    runningMode: 'VIDEO',
+    baseOptions: {
+      modelAssetBuffer,
+      delegate: 'GPU' as const,
+    },
+    runningMode: 'VIDEO' as const,
     numHands: 1,
-    minHandDetectionConfidence: 0.72,
-    minHandPresenceConfidence: 0.72,
-    minTrackingConfidence: 0.72,
+    minHandDetectionConfidence: 0.55,
+    minHandPresenceConfidence: 0.55,
+    minTrackingConfidence: 0.55,
   };
+
   try {
-    return await vision.HandLandmarker.createFromOptions(fileset, {
-      ...options,
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-    });
+    return await HandLandmarker.createFromOptions(fileset, options);
   } catch (gpuError) {
-    console.warn('[SignSpeak] GPU delegate unavailable; retrying with CPU', gpuError);
-    return vision.HandLandmarker.createFromOptions(fileset, {
-      ...options,
-      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
-    });
+    console.warn(
+      '[SignSpeak] GPU delegate unavailable; retrying hand landmarker with CPU.',
+      gpuError,
+    );
+    try {
+      return await HandLandmarker.createFromOptions(fileset, {
+        ...options,
+        baseOptions: {
+          modelAssetBuffer,
+          delegate: 'CPU',
+        },
+      });
+    } catch (cpuError) {
+      throw new Error(
+        `MediaPipe HandLandmarker could not initialize with GPU or CPU. GPU: ${formatError(gpuError)} CPU: ${formatError(cpuError)}`,
+        { cause: cpuError },
+      );
+    }
   }
 }
 
