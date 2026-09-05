@@ -13,11 +13,13 @@ import {
   Lightbulb,
   LockKeyhole,
   Mic,
+  Pause,
   Play,
   RotateCcw,
   ShieldCheck,
   Sparkles,
   Square,
+  Trash2,
   Volume2,
   Waves,
   X,
@@ -26,8 +28,13 @@ import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
   classifyLandmarks,
   createHandLandmarker,
+  appendRecognizedGesture,
+  formatSentence,
+  GESTURE_TO_WORDS,
   getRecognitionErrorMessage,
+  SENTENCE_WORD_LIMIT,
   SUPPORTED_GESTURES,
+  sentenceWordCount,
   type HandLandmarkerInstance,
   type SupportedGesture,
 } from '@/lib/sign-recognition';
@@ -198,28 +205,40 @@ function CameraStage({
   videoRef,
   status,
   translation,
+  sentence,
+  sentenceWordCountValue,
+  recognitionPaused,
   speechStatus,
   autoSpeak,
   technicalError,
   onStart,
   onStop,
   onSpeak,
-  onClear,
+  onSpeakSentence,
+  onClearTranslation,
+  onClearSentence,
   onToggleAutoSpeak,
+  onToggleRecognition,
   error,
 }: {
   phase: CameraPhase;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   status: string;
   translation: SupportedGesture | null;
+  sentence: string;
+  sentenceWordCountValue: number;
+  recognitionPaused: boolean;
   speechStatus: SpeechStatus;
   autoSpeak: boolean;
   technicalError: string | null;
   onStart: () => void;
   onStop: () => void;
   onSpeak: () => void;
-  onClear: () => void;
+  onSpeakSentence: () => void;
+  onClearTranslation: () => void;
+  onClearSentence: () => void;
   onToggleAutoSpeak: () => void;
+  onToggleRecognition: () => void;
   error: CameraError | null;
 }) {
   const isLive = phase === 'live';
@@ -228,7 +247,7 @@ function CameraStage({
       <div className="flex items-center justify-between border-b border-[#eee5f3] px-5 py-4">
         <div className="flex items-center gap-2.5">
           <div className={`h-2.5 w-2.5 rounded-full ${isLive ? 'animate-quiet-pulse bg-[#36a66d]' : 'bg-[#cbbbd4]'}`} />
-          <span className="text-sm font-bold text-[#4d3563]">{isLive ? 'Listening for a sign' : 'Ready when you are'}</span>
+          <span className="text-sm font-bold text-[#4d3563]">{isLive ? (recognitionPaused ? 'Recognition paused' : 'Listening for a sign') : 'Ready when you are'}</span>
         </div>
         {isLive && <span className="rounded-full bg-[#f5effb] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-[#75519a]">Live preview</span>}
       </div>
@@ -272,6 +291,47 @@ function CameraStage({
           </div>
         )}
       </div>
+      <div className="px-4 pt-4 sm:px-5">
+        <div className="rounded-2xl border border-[#dfd0e9] bg-[#f9f4fc] p-4 sm:p-5" data-testid="panel-current-sentence">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#8f769f]">Current sentence</p>
+              <p className="mt-1 text-xs font-semibold text-[#a18cae]">
+                {sentenceWordCountValue}/{SENTENCE_WORD_LIMIT} recognized words
+              </p>
+            </div>
+            <div className="rounded-xl bg-white p-2 text-[#7952a2] shadow-sm"><Waves size={17} aria-hidden="true" /></div>
+          </div>
+          <p
+            className={`mt-4 min-h-[92px] rounded-xl border border-white/80 bg-white px-4 py-4 font-display text-xl font-extrabold leading-8 tracking-[-.035em] ${
+              sentence ? 'text-[#42285c]' : 'text-[#b7a9bf]'
+            }`}
+            data-testid="text-current-sentence"
+          >
+            {sentence || 'Your recognized signs will build a sentence here.'}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2.5">
+            <button
+              type="button"
+              onClick={onSpeakSentence}
+              disabled={!sentence}
+              className="touch-target flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#633b91] px-4 text-xs font-bold text-white transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#d8cce1]"
+              data-testid="button-speak-sentence"
+            >
+              <Volume2 size={16} aria-hidden="true" /> {speechStatus === 'speaking' ? 'Speaking…' : 'Speak Sentence'}
+            </button>
+            <button
+              type="button"
+              onClick={onClearSentence}
+              disabled={!sentence}
+              className="touch-target flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#ded1e8] bg-white px-4 text-xs font-bold text-[#6b4d7f] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+              data-testid="button-clear-sentence"
+            >
+              <Trash2 size={16} aria-hidden="true" /> Clear Sentence
+            </button>
+          </div>
+        </div>
+      </div>
       <div className="p-4 sm:p-5">
         <div className="rounded-2xl border border-[#ede4f2] bg-[#fcfaff] p-4" data-testid="panel-translation">
           <div className="flex items-center justify-between gap-3">
@@ -297,7 +357,7 @@ function CameraStage({
             <button type="button" onClick={onSpeak} disabled={!translation} className="touch-target flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#633b91] px-4 text-xs font-bold text-white transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#d8cce1]" data-testid="button-speak-again">
               <Volume2 size={16} aria-hidden="true" /> {speechStatus === 'speaking' ? 'Speaking…' : 'Speak Again'}
             </button>
-            <button type="button" onClick={onClear} disabled={!translation} className="touch-target flex items-center justify-center gap-2 rounded-xl border border-[#ded1e8] bg-white px-4 text-xs font-bold text-[#6b4d7f] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-clear-translation">
+            <button type="button" onClick={onClearTranslation} disabled={!translation} className="touch-target flex items-center justify-center gap-2 rounded-xl border border-[#ded1e8] bg-white px-4 text-xs font-bold text-[#6b4d7f] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-clear-translation">
               <X size={16} aria-hidden="true" /> Clear Translation
             </button>
           </div>
@@ -309,6 +369,17 @@ function CameraStage({
             </span>
             Auto-speak accepted signs
           </button>
+          {isLive && (
+            <button
+              type="button"
+              onClick={onToggleRecognition}
+              className="flex min-h-11 items-center gap-2 text-xs font-bold text-[#705784]"
+              data-testid="button-toggle-recognition"
+            >
+              {recognitionPaused ? <Play size={14} fill="currentColor" aria-hidden="true" /> : <Pause size={14} fill="currentColor" aria-hidden="true" />}
+              {recognitionPaused ? 'Resume Recognition' : 'Pause Recognition'}
+            </button>
+          )}
           {isLive && <button type="button" onClick={onStop} className="flex min-h-11 items-center gap-2 text-xs font-bold text-[#a34d5c]" data-testid="button-stop-camera"><Square size={14} fill="currentColor" aria-hidden="true" /> Stop Camera</button>}
         </div>
       </div>
@@ -322,36 +393,44 @@ function Home() {
   const landmarkerRef = useRef<HandLandmarkerInstance | null>(null);
   const animationRef = useRef<number | null>(null);
   const autoSpeakRef = useRef(true);
+  const recognitionPausedRef = useRef(false);
   const frameStateRef = useRef({ candidate: null as SupportedGesture | null, count: 0, lastAccepted: null as SupportedGesture | null, lastAcceptedAt: 0 });
   const [phase, setPhase] = useState<CameraPhase>('welcome');
   const [error, setError] = useState<CameraError | null>(null);
   const [technicalError, setTechnicalError] = useState<string | null>(null);
   const [detectionStatus, setDetectionStatus] = useState('No supported sign detected');
   const [translation, setTranslation] = useState<SupportedGesture | null>(null);
+  const [sentenceGestures, setSentenceGestures] = useState<SupportedGesture[]>([]);
+  const [recognitionPaused, setRecognitionPaused] = useState(false);
   const [speechStatus, setSpeechStatus] = useState<SpeechStatus>('idle');
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [selectedGesture, setSelectedGesture] = useState<SupportedGesture>('HELLO');
   autoSpeakRef.current = autoSpeak;
+  recognitionPausedRef.current = recognitionPaused;
+  const sentence = formatSentence(sentenceGestures);
+  const currentSentenceWordCount = sentenceWordCount(sentenceGestures);
 
   const stopCamera = useCallback(() => {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     animationRef.current = null;
+    recognitionPausedRef.current = false;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     frameStateRef.current = { candidate: null, count: 0, lastAccepted: null, lastAcceptedAt: 0 };
     setDetectionStatus('No supported sign detected');
+    setRecognitionPaused(false);
     setPhase('welcome');
   }, []);
 
-  const speak = useCallback((gesture: SupportedGesture) => {
+  const speakText = useCallback((text: string) => {
     if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
       setSpeechStatus('unsupported');
       return;
     }
     try {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(gesture);
+      const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.88;
       utterance.pitch = 1.02;
       utterance.onstart = () => setSpeechStatus('speaking');
@@ -364,7 +443,26 @@ function Home() {
     }
   }, []);
 
+  const speak = useCallback((gesture: SupportedGesture) => {
+    speakText(GESTURE_TO_WORDS[gesture]);
+  }, [speakText]);
+
+  const speakSentence = useCallback(() => {
+    if (sentence) speakText(sentence);
+  }, [sentence, speakText]);
+
+  const acceptGesture = useCallback((gesture: SupportedGesture) => {
+    setTranslation(gesture);
+    setSentenceGestures((current) => appendRecognizedGesture(current, gesture));
+    setSpeechStatus('idle');
+    if (autoSpeakRef.current) speak(gesture);
+  }, [speak]);
+
   const processFrame = useCallback((time: number) => {
+    if (recognitionPausedRef.current) {
+      animationRef.current = null;
+      return;
+    }
     const video = videoRef.current;
     const landmarker = landmarkerRef.current;
     if (!video || !landmarker || video.readyState < 2) {
@@ -379,16 +477,17 @@ function Home() {
       if (!candidate) {
         state.candidate = null;
         state.count = 0;
-          setDetectionStatus(landmarks ? 'Hand detected · Recognizing…' : 'Show your hand in front of the camera');
+        state.lastAccepted = null;
+        state.lastAcceptedAt = 0;
+        setDetectionStatus(landmarks ? 'Hand detected · Recognizing…' : 'Show your hand in front of the camera');
       } else if (state.candidate === candidate) {
         state.count += 1;
-        setDetectionStatus(state.count >= 8 ? 'Sign accepted' : 'Recognizing…');
-        if (state.count >= 8 && (state.lastAccepted !== candidate || time - state.lastAcceptedAt > 3500)) {
+        const cooldownActive = state.lastAcceptedAt > 0 && time - state.lastAcceptedAt < 1200;
+        setDetectionStatus(state.count >= 8 && !cooldownActive ? 'Sign accepted' : 'Recognizing…');
+        if (state.count >= 8 && state.lastAccepted !== candidate && !cooldownActive) {
           state.lastAccepted = candidate;
           state.lastAcceptedAt = time;
-          setTranslation(candidate);
-          setSpeechStatus('idle');
-          if (autoSpeakRef.current) speak(candidate);
+          acceptGesture(candidate);
         }
       } else {
         state.candidate = candidate;
@@ -400,11 +499,33 @@ function Home() {
       setDetectionStatus('Recognition paused');
     }
     animationRef.current = requestAnimationFrame(processFrame);
-  }, [speak]);
+  }, [acceptGesture]);
+
+  const toggleRecognition = useCallback(() => {
+    if (phase !== 'live') return;
+
+    if (recognitionPausedRef.current) {
+      recognitionPausedRef.current = false;
+      setRecognitionPaused(false);
+      setDetectionStatus('Show your hand in front of the camera');
+      animationRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
+
+    recognitionPausedRef.current = true;
+    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+    frameStateRef.current.candidate = null;
+    frameStateRef.current.count = 0;
+    setRecognitionPaused(true);
+    setDetectionStatus('Recognition paused');
+  }, [phase, processFrame]);
 
   const startCamera = useCallback(async () => {
     setError(null);
     setTechnicalError(null);
+    recognitionPausedRef.current = false;
+    setRecognitionPaused(false);
     if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       console.error('[SignSpeak] Camera blocked: insecure context');
       setError('insecure');
@@ -489,14 +610,24 @@ function Home() {
               videoRef={videoRef}
               status={detectionStatus}
               translation={translation}
+              sentence={sentence}
+              sentenceWordCountValue={currentSentenceWordCount}
+              recognitionPaused={recognitionPaused}
               speechStatus={speechStatus}
               autoSpeak={autoSpeak}
               technicalError={technicalError}
               onStart={startCamera}
               onStop={stopCamera}
               onSpeak={() => translation && speak(translation)}
-              onClear={() => { setTranslation(null); setSpeechStatus('idle'); }}
+              onSpeakSentence={speakSentence}
+              onClearTranslation={() => { setTranslation(null); setSpeechStatus('idle'); }}
+              onClearSentence={() => {
+                window.speechSynthesis?.cancel();
+                setSentenceGestures([]);
+                setSpeechStatus('idle');
+              }}
               onToggleAutoSpeak={() => setAutoSpeak((value) => !value)}
+              onToggleRecognition={toggleRecognition}
               error={error}
             />
           </div>

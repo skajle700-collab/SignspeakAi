@@ -8,6 +8,16 @@ export type SupportedGesture = (typeof SUPPORTED_GESTURES)[number];
 
 export type Landmark = { x: number; y: number; z?: number };
 
+export const GESTURE_TO_WORDS: Record<SupportedGesture, string> = {
+  HELLO: 'hello',
+  YES: 'yes',
+  NO: 'no',
+  'THANK YOU': 'thank you',
+  HELP: 'help',
+};
+
+export const SENTENCE_WORD_LIMIT = 30;
+
 export type HandLandmarkerInstance = Pick<
   HandLandmarker,
   'detectForVideo' | 'close'
@@ -76,6 +86,41 @@ function formatError(error: unknown): string {
 
 export function getRecognitionErrorMessage(error: unknown): string {
   return formatError(error);
+}
+
+export function sentenceWordCount(gestures: SupportedGesture[]): number {
+  return gestures.reduce((count, gesture) => {
+    return count + GESTURE_TO_WORDS[gesture].trim().split(/\s+/).length;
+  }, 0);
+}
+
+export function appendRecognizedGesture(
+  gestures: SupportedGesture[],
+  gesture: SupportedGesture,
+): SupportedGesture[] {
+  if (gestures.at(-1) === gesture) return gestures;
+
+  const nextWordCount = sentenceWordCount(gestures) + sentenceWordCount([gesture]);
+  if (nextWordCount > SENTENCE_WORD_LIMIT) return gestures;
+
+  return [...gestures, gesture];
+}
+
+export function formatSentence(gestures: SupportedGesture[]): string {
+  if (gestures.length === 0) return '';
+
+  let sentence = gestures
+    .map((gesture) => GESTURE_TO_WORDS[gesture])
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  sentence = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+  if (gestures[0] === 'HELLO' && gestures.length > 1) {
+    sentence = sentence.replace(/^Hello\b/, 'Hello,');
+  }
+
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
 }
 
 export async function createHandLandmarker(): Promise<HandLandmarkerInstance> {
