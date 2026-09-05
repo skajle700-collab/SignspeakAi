@@ -27,6 +27,19 @@ SignSpeak does not request camera access on page load. Permission is requested o
 
 The rules are intentionally conservative. A hand landmark candidate must remain the same across multiple frames before it becomes a translation, and a cooldown prevents repeated speech for a held gesture.
 
+## Sentence mode
+
+Every accepted gesture is added to the **Current sentence** panel only after it passes the same stable-frame recognition check. Sentence mode:
+
+- maps only the five gestures that the recognition module actually supports;
+- ignores consecutive duplicate gestures and applies a short debounce between different signs;
+- capitalizes the first word, adds spaces, gives a greeting a comma, and closes the displayed sentence with a period;
+- keeps up to 30 recognized words, including multi-word phrases such as `THANK YOU`;
+- keeps the sentence when recognition is paused or the camera is stopped until **Clear Sentence** is pressed;
+- uses browser SpeechSynthesis to speak the complete displayed sentence with **Speak Sentence**.
+
+The phrase mapping lives beside the supported gesture list in `src/lib/sign-recognition.ts`, so a future trained classifier can add a gesture and its corresponding phrase without inventing unsupported sentence content.
+
 ## Hand-recognition technology
 
 When **Start Translating** is pressed, SignSpeak loads the MediaPipe Tasks Vision WebAssembly runtime from the pinned `@mediapipe/tasks-vision@1.0.1` distribution, downloads the official MediaPipe Hand Landmarker `.task` model into memory, verifies that the download is non-empty, and initializes the `HandLandmarker` before requesting the camera. The live loop then calls `detectForVideo` on the camera element for each animation frame. The model runs on-device; no camera frames are uploaded by this prototype. If GPU initialization is unavailable, the same downloaded model is retried with the CPU delegate.
